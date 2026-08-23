@@ -1,0 +1,18 @@
+import re
+from .domain import ExtractionResult, Explanation, Language, RuleResult, SourceReference, WorkflowState
+COPY={"KYC_INCOMPLETE":("KYC verification needs attention","Your claim cannot move forward because required verification information is incomplete.","Review your KYC information.","Complete any missing verification and then return to continue your claim."),"BANK_VERIFICATION_FAILED":("Bank verification needs attention","Your claim is paused because the bank verification did not complete.","Review your bank details and verification status.","Correct what is needed, then continue your claim."),"SERVICE_INFORMATION_MISSING":("Service information is missing","Your employment service information is incomplete.","Ask your previous employer to review the missing service information.","Return to your claim once it is corrected."),"INFORMATION_CONFLICT":("Some information does not match","Your claim details and service record contain conflicting information.","Review the conflicting information with your employer.","Correct it before continuing."),"READY_TO_CONTINUE":("You're ready to continue","We did not find a blocking issue in this synthetic case.","Continue to submit your claim.","Track processing after submission."),"CLAIM_RESOLVED":("This journey is resolved","The synthetic case is marked as resolved.","Review the resolution.","Keep any confirmation for your records."),"INVALID_CLAIM_TYPE":("We need to confirm the claim type","This prototype supports the withdrawal journey.","Choose the PF withdrawal journey.","Then continue with the synthetic demo.")}
+TRANSLATIONS={"hi":{"KYC_INCOMPLETE":("KYC सत्यापन पर ध्यान दें","आपका दावा आगे नहीं बढ़ सकता क्योंकि आवश्यक सत्यापन जानकारी अधूरी है।","अपनी KYC जानकारी देखें।","जो जानकारी अधूरी है उसे पूरा करके फिर दावा जारी रखें।")},"kn":{"KYC_INCOMPLETE":("KYC ಪರಿಶೀಲನೆಗೆ ಗಮನ ಬೇಕು","ಅಗತ್ಯ ಪರಿಶೀಲನೆ ಮಾಹಿತಿ ಅಪೂರ್ಣವಾಗಿರುವುದರಿಂದ ನಿಮ್ಮ ಕ್ಲೇಮ್ ಮುಂದುವರಿಯಲು ಸಾಧ್ಯವಿಲ್ಲ.","ನಿಮ್ಮ KYC ಮಾಹಿತಿಯನ್ನು ಪರಿಶೀಲಿಸಿ.","ಬಾಕಿ ಇರುವ ಪರಿಶೀಲನೆಯನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ, ನಂತರ ಕ್ಲೇಮ್ ಮುಂದುವರಿಸಿ.")}}
+def redact(text:str)->str: return re.sub(r"\b\d{8,}\b","[redacted]",text)
+def infer_scenario(text:str)->str|None:
+    t=text.lower()
+    for key,words in {"bank":["bank"],"service":["service","employment"],"conflict":["conflict","mismatch","match"],"kyc":["kyc","verification","reject","rejected","claim"]}.items():
+        if any(word in t for word in words): return key
+    return None
+def local_extraction(text:str)->ExtractionResult: return ExtractionResult(mentioned_issue=redact(text) or None,scenario_hint=infer_scenario(text),mode="demo_mock")
+def local_explanation(result:RuleResult,sources:list[SourceReference],language:Language,mode:str="demo_mock")->Explanation:
+    title,happened,first,second=TRANSLATIONS.get(language.value,{}).get(result.reason_code.value,COPY[result.reason_code.value])
+    why=f"NIVA's deterministic workflow check found: {result.reason_code.value.replace('_',' ').lower()}." + (" The listed local official guidance is relevant to this next step." if sources else "")
+    return Explanation(what_happened=happened,what_to_do=[first,second],why=why,source_references=sources,language=language,mode=mode)
+def timeline(step:WorkflowState):
+    steps=[("claim_preparation","Understand claim"),("eligibility_check","Check eligibility"),("kyc_verification","Resolve KYC"),("bank_verification","Verify bank"),("claim_submission","Submit claim"),("processing","Track processing"),("payment","Payment")]; current=step.value; index=next((i for i,(key,_) in enumerate(steps) if key==current),len(steps)-1)
+    return [{"key":key,"label":label,"state":"current" if key==current else "complete" if i<index else "upcoming"} for i,(key,label) in enumerate(steps)]

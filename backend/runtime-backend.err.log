@@ -1,0 +1,6 @@
+INFO:     Started server process [23180]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+{"event": "case_created", "request_id": "38c18428-f9f7-4ffe-8558-323bf1d96dc8", "case_id": "a7f92e46-b0a4-4bef-b8bc-e51575fb2a98", "scenario": "kyc"}
+{"event": "case_analyzed", "request_id": "62445c67-adfc-4aba-bd11-ba548a135c4c", "case_id": "a7f92e46-b0a4-4bef-b8bc-e51575fb2a98", "reason": "KYC_INCOMPLETE"}
