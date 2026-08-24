@@ -1,28 +1,619 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowRight, Check, ChevronLeft, FileText, Globe2, Landmark, RotateCcw, ShieldCheck, Upload, X } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  ChevronLeft,
+  FileText,
+  Globe2,
+  Landmark,
+  RotateCcw,
+  ShieldCheck,
+  Upload,
+  X,
+} from 'lucide-react';
 import './styles.css';
 
-type Analysis={title:string;what_happened:string;what_to_do:string;why:string;source?:{title:string;url:string;section:string;excerpt:string}|null;timeline:{key:string;label:string;state:string}[]};
-const local:Record<string,Analysis>={
- kyc:{title:'KYC verification needs attention',what_happened:'Your claim cannot move forward because required verification information is incomplete.',what_to_do:'Review your KYC information, complete any missing verification, then return to continue your claim.',why:"NIVA's deterministic workflow check found that KYC verification is incomplete.",source:{title:'EPFO Member e-Sewa',url:'https://unifiedportal-mem.epfindia.gov.in/memberinterface/',section:'KYC',excerpt:'KYC details should be completed and approved before a member continues their claim workflow.'},timeline:[]},
- bank:{title:'Bank verification needs attention',what_happened:'Your claim is paused because the bank verification did not complete.',what_to_do:'Review the bank details and verification status, correct what is needed, then continue your claim.',why:"NIVA's deterministic workflow check found a bank verification issue.",source:{title:'EPFO Member e-Sewa',url:'https://unifiedportal-mem.epfindia.gov.in/memberinterface/',section:'Bank details',excerpt:'Review the bank details and their verification status in the member portal.'},timeline:[]},
- service:{title:'Service information is missing',what_happened:'Your employment service information is incomplete, so the claim cannot be checked yet.',what_to_do:'Ask your previous employer to review the missing service information, then return to your claim.',why:"NIVA's deterministic workflow check found missing service information.",timeline:[]},
- conflict:{title:'Some information does not match',what_happened:'Your claim details and service record contain conflicting information.',what_to_do:'Review the conflicting information with your employer and correct it before continuing.',why:"NIVA's deterministic workflow check found conflicting information.",timeline:[]},
- ready:{title:"You're ready to continue",what_happened:'We did not find a blocking issue in this synthetic case.',what_to_do:'Continue to submit your claim and track its processing.',why:"NIVA's deterministic workflow check found no blocking issue.",timeline:[]}
+type TimelineStep = {
+  key: string;
+  label: string;
+  state: 'complete' | 'current' | 'upcoming';
 };
-const defaultTimeline=(key:string)=>['Understand claim','Check eligibility','Resolve KYC','Verify bank','Submit claim','Track processing','Payment'].map((label,i)=>({key:label,label,state:(key==='kyc'&&i===2)||(key==='bank'&&i===3)||(key==='service'&&i===1)||(key==='conflict'&&i===1)||(key==='ready'&&i===4)?'current':(key==='kyc'?i<2:key==='bank'?i<3:key==='ready'?i<4:i<1)?'complete':'upcoming'}));
-function infer(text:string){const t=text.toLowerCase();return t.includes('bank')?'bank':t.includes('service')||t.includes('employment')?'service':t.includes('conflict')||t.includes('mismatch')?'conflict':t.includes('ready')?'ready':'kyc'}
-function App(){
- const [screen,setScreen]=useState<'landing'|'describe'|'processing'|'result'>('landing'); const [issue,setIssue]=useState('kyc'); const [description,setDescription]=useState(''); const [file,setFile]=useState<File|null>(null); const [analysis,setAnalysis]=useState<Analysis|null>(null); const [error,setError]=useState(''); const [locale,setLocale]=useState('EN');
- const begin=()=>setScreen('describe');
- async function analyze(){setError('');setScreen('processing');const scenario=issue||infer(description);try{const created=await fetch('http://localhost:8000/cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scenario,language:locale.toLowerCase()})});if(!created.ok)throw Error();const {case_id}=await created.json();if(file){const form=new FormData();form.append('file',file);const upload=await fetch(`http://localhost:8000/cases/${case_id}/documents`,{method:'POST',body:form});if(!upload.ok)throw Error();}const res=await fetch(`http://localhost:8000/cases/${case_id}/analyze`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({description})});if(!res.ok)throw Error();const body=await res.json();setAnalysis({...body.explanation,timeline:body.timeline});}catch{const chosen=local[scenario]||local.kyc;setAnalysis({...chosen,timeline:defaultTimeline(scenario)});setError('Demo mode / Backend unavailable — this result is local synthetic preview only.');}setTimeout(()=>setScreen('result'),650)}
- const back=()=>setScreen(screen==='describe'?'landing':'describe');
- return <main><header><button className="brand" onClick={()=>setScreen('landing')} aria-label="Go to NIVA home"><span>N</span><b>NIVA</b></button><div className="header-actions"><label className="text-button"><Globe2 size={17}/><select value={locale} onChange={e=>setLocale(e.target.value)} aria-label="Language"><option value="EN">EN</option><option value="HI">हिंदी</option><option value="KN">ಕನ್ನಡ</option></select></label><button className="demo"><span></span>Demo mode</button></div></header>
- <div className="notice"><ShieldCheck size={15}/> Prototype — uses synthetic data. Not an official EPFO service.</div>
- {screen==='landing'&&<section className="landing"><p className="eyebrow">YOUR PF JOURNEY, EXPLAINED.</p><h1>Understand.<br/><i>Fix.</i> Continue.</h1><p className="lead">Clear, calm guidance when your PF claim gets stuck.</p><div className="choice-card"><h2>What do you need help with?</h2><button className="primary choice" onClick={begin}><span><Landmark size={21}/></span><div><b>My PF claim has a problem</b><small>Understand what happened and what to do next</small></div><ArrowRight size={20}/></button><div className="secondary-options"><button disabled>I want to withdraw my PF <small>Coming soon</small></button><button disabled>I want to transfer my PF <small>Coming soon</small></button></div></div><p className="trust"><ShieldCheck size={16}/> Built for clarity. No real personal data needed.</p></section>}
- {screen==='describe'&&<section className="flow"><button className="back" onClick={back}><ChevronLeft size={18}/>Back</button><p className="step">STEP 1 OF 2</p><h1>Tell us what<br/>you're seeing.</h1><p className="sub">Choose the closest issue, or describe it in your own words.</p><div className="issues">{[['kyc','KYC verification'],['bank','Bank verification'],['service','Missing service info'],['conflict','Information conflict'],['ready','No blocking issue']].map(([key,label])=><button key={key} className={issue===key?'selected':''} onClick={()=>setIssue(key)}><span className="radio"></span>{label}</button>)}</div><label htmlFor="description">What happened? <em>Optional</em></label><textarea id="description" value={description} onChange={e=>setDescription(e.target.value)} placeholder="Example: My claim was rejected and I don't understand why." maxLength={3000}/><div className="upload"><input id="file" type="file" accept=".pdf,image/*" onChange={e=>setFile(e.target.files?.[0]||null)}/><label htmlFor="file"><Upload size={19}/><span>{file?file.name:'Add a synthetic notice'}<small>{file?'Ready to analyse':'PDF or image · synthetic data only'}</small></span></label>{file&&<button onClick={()=>setFile(null)} aria-label="Remove file"><X size={17}/></button>}</div><button className="primary continue" onClick={analyze}>Understand my claim <ArrowRight size={19}/></button><p className="privacy">Please do not upload Aadhaar, PAN, UAN, bank details, OTPs, or any real personal data.</p></section>}
- {screen==='processing'&&<section className="processing" aria-live="polite"><div className="pulse"><FileText size={32}/></div><p className="eyebrow">ANALYSING SYNTHETIC INFORMATION</p><h1>Understanding<br/>your claim…</h1><p>We’re checking the information you provided.</p><div className="processing-line"><span></span></div></section>}
- {screen==='result'&&analysis&&<section className="result"><button className="back" onClick={back}><ChevronLeft size={18}/>Start over</button>{error&&<p className="demo-error">{error}</p>}<p className="eyebrow">ANALYSIS COMPLETE</p><div className="result-head"><div className="success-mark"><Check size={24}/></div><div><span>WE FOUND THE PROBLEM</span><h1>{analysis.title}</h1></div></div><article><p className="article-label">WHAT HAPPENED?</p><p>{analysis.what_happened}</p></article><article className="action"><p className="article-label">WHAT DO I DO?</p><p>{analysis.what_to_do}</p><button className="action-button">I understand my next step <ArrowRight size={18}/></button></article><article><p className="article-label">WHY?</p><p>{analysis.why}</p>{analysis.source?<a href={analysis.source.url} target="_blank">View source: {analysis.source.title} · {analysis.source.section} <ArrowRight size={14}/></a>:<small>Our local knowledge base does not contain sufficient source guidance for this issue.</small>}</article><div className="journey"><p className="article-label">YOUR JOURNEY</p>{analysis.timeline.map(step=><div className={'timeline '+step.state} key={step.key}><span>{step.state==='complete'?<Check size={14}/>:step.state==='current'?'•':'○'}</span><b>{step.label}</b>{step.state==='current'&&<em>YOU ARE HERE</em>}</div>)}</div><button className="outline" onClick={()=>setScreen('landing')}><RotateCcw size={17}/>Try another demo</button></section>}
- </main>}
-createRoot(document.getElementById('root')!).render(<App/>);
+
+type Source = {
+  title: string;
+  url: string;
+  section: string;
+  excerpt: string;
+};
+
+type Analysis = {
+  title: string;
+  what_happened: string;
+  what_to_do: string;
+  why: string;
+  source?: Source | null;
+  timeline: TimelineStep[];
+};
+
+const local: Record<string, Omit<Analysis, 'timeline'>> = {
+  kyc: {
+    title: 'KYC verification needs attention',
+    what_happened:
+      'Your claim cannot move forward because required verification information is incomplete.',
+    what_to_do:
+      'Review your KYC information, complete any missing verification, then return to continue your claim.',
+    why: "NIVA's deterministic workflow check found that KYC verification is incomplete.",
+    source: {
+      title: 'EPFO Member e-Sewa',
+      url: 'https://unifiedportal-mem.epfindia.gov.in/memberinterface/',
+      section: 'KYC',
+      excerpt:
+        'KYC details should be completed and approved before a member continues their claim workflow.',
+    },
+  },
+
+  bank: {
+    title: 'Bank verification needs attention',
+    what_happened:
+      'Your claim is paused because the bank verification did not complete.',
+    what_to_do:
+      'Review the bank details and verification status, correct what is needed, then continue your claim.',
+    why: "NIVA's deterministic workflow check found a bank verification issue.",
+    source: {
+      title: 'EPFO Member e-Sewa',
+      url: 'https://unifiedportal-mem.epfindia.gov.in/memberinterface/',
+      section: 'Bank details',
+      excerpt:
+        'Review the bank details and their verification status in the member portal.',
+    },
+  },
+
+  service: {
+    title: 'Service information is missing',
+    what_happened:
+      'Your employment service information is incomplete, so the claim cannot be checked yet.',
+    what_to_do:
+      'Ask your previous employer to review the missing service information, then return to your claim.',
+    why: "NIVA's deterministic workflow check found missing service information.",
+    source: null,
+  },
+
+  conflict: {
+    title: 'Some information does not match',
+    what_happened:
+      'Your claim details and service record contain conflicting information.',
+    what_to_do:
+      'Review the conflicting information with your employer and correct it before continuing.',
+    why: "NIVA's deterministic workflow check found conflicting information.",
+    source: null,
+  },
+
+  ready: {
+    title: "You're ready to continue",
+    what_happened:
+      'We did not find a blocking issue in this synthetic case.',
+    what_to_do:
+      'Continue to submit your claim and track its processing.',
+    why: "NIVA's deterministic workflow check found no blocking issue.",
+    source: null,
+  },
+};
+
+const defaultTimeline = (key: string): TimelineStep[] => {
+  const labels = [
+    'Understand claim',
+    'Check eligibility',
+    'Resolve KYC',
+    'Verify bank',
+    'Submit claim',
+    'Track processing',
+    'Payment',
+  ];
+
+  const currentIndex =
+    key === 'kyc'
+      ? 2
+      : key === 'bank'
+        ? 3
+        : key === 'service'
+          ? 1
+          : key === 'conflict'
+            ? 1
+            : key === 'ready'
+              ? 4
+              : 2;
+
+  return labels.map((label, index): TimelineStep => {
+    let state: TimelineStep['state'];
+
+    if (index < currentIndex) {
+      state = 'complete';
+    } else if (index === currentIndex) {
+      state = 'current';
+    } else {
+      state = 'upcoming';
+    }
+
+    return {
+      key: label,
+      label,
+      state,
+    };
+  });
+};
+
+function infer(text: string) {
+  const t = text.toLowerCase();
+
+  if (t.includes('bank')) {
+    return 'bank';
+  }
+
+  if (t.includes('service') || t.includes('employment')) {
+    return 'service';
+  }
+
+  if (t.includes('conflict') || t.includes('mismatch')) {
+    return 'conflict';
+  }
+
+  if (t.includes('ready')) {
+    return 'ready';
+  }
+
+  return 'kyc';
+}
+
+function App() {
+  const [screen, setScreen] = useState<
+    'landing' | 'describe' | 'processing' | 'result'
+  >('landing');
+
+  const [issue, setIssue] = useState('kyc');
+  const [description, setDescription] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [error, setError] = useState('');
+  const [locale, setLocale] = useState('EN');
+
+  const begin = () => setScreen('describe');
+
+  async function analyze() {
+    setError('');
+    setScreen('processing');
+
+    const scenario = issue || infer(description);
+
+    try {
+      const created = await fetch('http://localhost:8000/cases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scenario,
+          language: locale.toLowerCase(),
+        }),
+      });
+
+      if (!created.ok) {
+        throw new Error('Failed to create case');
+      }
+
+      const { case_id } = await created.json();
+
+      if (file) {
+        const form = new FormData();
+        form.append('file', file);
+
+        const upload = await fetch(
+          `http://localhost:8000/cases/${case_id}/documents`,
+          {
+            method: 'POST',
+            body: form,
+          }
+        );
+
+        if (!upload.ok) {
+          throw new Error('Failed to upload document');
+        }
+      }
+
+      const res = await fetch(
+        `http://localhost:8000/cases/${case_id}/analyze`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            description,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error('Failed to analyze case');
+      }
+
+      const body = await res.json();
+
+      /*
+       * Normalize source information from the backend.
+       *
+       * Depending on the API response schema, retrieved source metadata
+       * may appear as:
+       *   explanation.source
+       *   explanation.source_references[0]
+       *   body.source
+       *   body.source_references[0]
+       *
+       * NIVA's frontend uses a single `source` field.
+       */
+      const explanation = body.explanation ?? {};
+
+      const source: Source | null =
+        explanation.source ??
+        explanation.source_references?.[0] ??
+        body.source ??
+        body.source_references?.[0] ??
+        null;
+
+      setAnalysis({
+        ...explanation,
+        source,
+        timeline: body.timeline ?? [],
+      });
+    } catch {
+      const chosen = local[scenario] || local.kyc;
+
+      setAnalysis({
+        ...chosen,
+        timeline: defaultTimeline(scenario),
+      });
+
+      setError(
+        'Demo mode / Backend unavailable — this result is local synthetic preview only.'
+      );
+    }
+
+    setTimeout(() => setScreen('result'), 650);
+  }
+
+  const back = () => {
+    setScreen(screen === 'describe' ? 'landing' : 'describe');
+  };
+
+  return (
+    <main>
+      <header>
+        <button
+          className="brand"
+          onClick={() => setScreen('landing')}
+          aria-label="Go to NIVA home"
+        >
+          <span>N</span>
+          <b>NIVA</b>
+        </button>
+
+        <div className="header-actions">
+          <label className="text-button">
+            <Globe2 size={17} />
+
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value)}
+              aria-label="Language"
+            >
+              <option value="EN">EN</option>
+              <option value="HI">हिंदी</option>
+              <option value="KN">ಕನ್ನಡ</option>
+            </select>
+          </label>
+
+          <button className="demo">
+            <span />
+            Demo mode
+          </button>
+        </div>
+      </header>
+
+      <div className="notice">
+        <ShieldCheck size={15} />
+        Prototype — uses synthetic data. Not an official EPFO service.
+      </div>
+
+      {screen === 'landing' && (
+        <section className="landing">
+          <p className="eyebrow">YOUR PF JOURNEY, EXPLAINED.</p>
+
+          <h1>
+            Understand.
+            <br />
+            <i>Fix.</i> Continue.
+          </h1>
+
+          <p className="lead">
+            Clear, calm guidance when your PF claim gets stuck.
+          </p>
+
+          <div className="choice-card">
+            <h2>What do you need help with?</h2>
+
+            <button className="primary choice" onClick={begin}>
+              <span>
+                <Landmark size={21} />
+              </span>
+
+              <div>
+                <b>My PF claim has a problem</b>
+
+                <small>
+                  Understand what happened and what to do next
+                </small>
+              </div>
+
+              <ArrowRight size={20} />
+            </button>
+
+            <div className="secondary-options">
+              <button disabled>
+                I want to withdraw my PF
+                <small>Coming soon</small>
+              </button>
+
+              <button disabled>
+                I want to transfer my PF
+                <small>Coming soon</small>
+              </button>
+            </div>
+          </div>
+
+          <p className="trust">
+            <ShieldCheck size={16} />
+            Built for clarity. No real personal data needed.
+          </p>
+        </section>
+      )}
+
+      {screen === 'describe' && (
+        <section className="flow">
+          <button className="back" onClick={back}>
+            <ChevronLeft size={18} />
+            Back
+          </button>
+
+          <p className="step">STEP 1 OF 2</p>
+
+          <h1>
+            Tell us what
+            <br />
+            you're seeing.
+          </h1>
+
+          <p className="sub">
+            Choose the closest issue, or describe it in your own words.
+          </p>
+
+          <div className="issues">
+            {[
+              ['kyc', 'KYC verification'],
+              ['bank', 'Bank verification'],
+              ['service', 'Missing service info'],
+              ['conflict', 'Information conflict'],
+              ['ready', 'No blocking issue'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                className={issue === key ? 'selected' : ''}
+                onClick={() => setIssue(key)}
+              >
+                <span className="radio" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <label htmlFor="description">
+            What happened? <em>Optional</em>
+          </label>
+
+          <textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Example: My claim was rejected and I don't understand why."
+            maxLength={3000}
+          />
+
+          <div className="upload">
+            <input
+              id="file"
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => {
+                setFile(e.target.files?.[0] || null);
+              }}
+            />
+
+            <label htmlFor="file">
+              <Upload size={19} />
+
+              <span>
+                {file ? file.name : 'Add a synthetic notice'}
+
+                <small>
+                  {file
+                    ? 'Ready to analyse'
+                    : 'PDF or image · synthetic data only'}
+                </small>
+              </span>
+            </label>
+
+            {file && (
+              <button
+                onClick={() => setFile(null)}
+                aria-label="Remove file"
+              >
+                <X size={17} />
+              </button>
+            )}
+          </div>
+
+          <button className="primary continue" onClick={analyze}>
+            Understand my claim
+            <ArrowRight size={19} />
+          </button>
+
+          <p className="privacy">
+            Please do not upload Aadhaar, PAN, UAN, bank details,
+            OTPs, or any real personal data.
+          </p>
+        </section>
+      )}
+
+      {screen === 'processing' && (
+        <section className="processing" aria-live="polite">
+          <div className="pulse">
+            <FileText size={32} />
+          </div>
+
+          <p className="eyebrow">
+            ANALYSING SYNTHETIC INFORMATION
+          </p>
+
+          <h1>
+            Understanding
+            <br />
+            your claim…
+          </h1>
+
+          <p>We’re checking the information you provided.</p>
+
+          <div className="processing-line">
+            <span />
+          </div>
+        </section>
+      )}
+
+      {screen === 'result' && analysis && (
+        <section className="result">
+          <button className="back" onClick={back}>
+            <ChevronLeft size={18} />
+            Start over
+          </button>
+
+          {error && <p className="demo-error">{error}</p>}
+
+          <p className="eyebrow">ANALYSIS COMPLETE</p>
+
+          <div className="result-head">
+            <div className="success-mark">
+              <Check size={24} />
+            </div>
+
+            <div>
+              <span>WE FOUND THE PROBLEM</span>
+              <h1>{analysis.title}</h1>
+            </div>
+          </div>
+
+          <article>
+            <p className="article-label">WHAT HAPPENED?</p>
+            <p>{analysis.what_happened}</p>
+          </article>
+
+          <article className="action">
+            <p className="article-label">WHAT DO I DO?</p>
+            <p>{analysis.what_to_do}</p>
+
+            <button className="action-button">
+              I understand my next step
+              <ArrowRight size={18} />
+            </button>
+          </article>
+
+          <article>
+            <p className="article-label">WHY?</p>
+
+            <p>{analysis.why}</p>
+
+            {analysis.source ? (
+              <div className="source-card">
+                <div className="source-card-header">
+                  <div>
+                    <p className="source-label">OFFICIAL GUIDANCE</p>
+
+                    <h3>{analysis.source.title}</h3>
+
+                    <span className="source-section">
+                      {analysis.source.section}
+                    </span>
+                  </div>
+                </div>
+
+                {analysis.source.excerpt && (
+                  <p className="source-excerpt">
+                    {analysis.source.excerpt}
+                  </p>
+                )}
+
+                <a
+                  href={analysis.source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View official guidance
+                  <ArrowRight size={14} />
+                </a>
+              </div>
+            ) : (
+              <small>
+                Our local knowledge base does not contain sufficient
+                source guidance for this issue.
+              </small>
+            )}
+          </article>
+
+          <div className="journey">
+            <p className="article-label">YOUR JOURNEY</p>
+
+            {analysis.timeline.map((step) => (
+              <div
+                className={`timeline ${step.state}`}
+                key={step.key}
+              >
+                <span>
+                  {step.state === 'complete' ? (
+                    <Check size={14} />
+                  ) : step.state === 'current' ? (
+                    '•'
+                  ) : (
+                    '○'
+                  )}
+                </span>
+
+                <b>{step.label}</b>
+
+                {step.state === 'current' && (
+                  <em>YOU ARE HERE</em>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button
+            className="outline"
+            onClick={() => setScreen('landing')}
+          >
+            <RotateCcw size={17} />
+            Try another demo
+          </button>
+        </section>
+      )}
+    </main>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(<App />);
