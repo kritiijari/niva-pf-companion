@@ -1,6 +1,10 @@
 from pydantic import BaseModel, Field
-from .domain import Language, RuleResult, ExtractionResult, Explanation
-class CreateCaseRequest(BaseModel): scenario: str="kyc"; language: Language=Language.EN
+from .domain import Language, RuleResult, ExtractionResult, Explanation, ClaimType
+
+class CreateCaseRequest(BaseModel):
+    scenario: str = "kyc"
+    claim_type: ClaimType = ClaimType.WITHDRAWAL
+    language: Language = Language.EN
 class CaseCreated(BaseModel): case_id: str; request_id: str
 class AnalyzeRequest(BaseModel): description: str=Field(default="", max_length=3000)
 class TimelineItem(BaseModel): key: str; label: str; state: str

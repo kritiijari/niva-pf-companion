@@ -1,7 +1,9 @@
 from enum import Enum
 from pydantic import BaseModel, Field
 class Language(str, Enum): EN="en"; HI="hi"; KN="kn"
-class ClaimType(str, Enum): WITHDRAWAL="withdrawal"
+class ClaimType(str, Enum):
+    WITHDRAWAL = "withdrawal"
+    TRANSFER = "transfer"
 class ClaimStatus(str, Enum): DRAFT="draft"; REJECTED="rejected"; READY="ready"; RESOLVED="resolved"
 class Verification(str, Enum): COMPLETE="complete"; INCOMPLETE="incomplete"; FAILED="failed"
 class ServiceRecord(str, Enum): COMPLETE="complete"; MISSING="missing"
@@ -9,7 +11,17 @@ class Consistency(str, Enum): CONSISTENT="consistent"; CONFLICT="conflict"
 class WorkflowState(str, Enum):
     CLAIM_PREPARATION="claim_preparation"; ELIGIBILITY_CHECK="eligibility_check"; KYC_VERIFICATION="kyc_verification"; BANK_VERIFICATION="bank_verification"; CLAIM_SUBMISSION="claim_submission"; PROCESSING="processing"; PAYMENT="payment"; RESOLVED="resolved"
 class ReasonCode(str, Enum):
-    KYC_INCOMPLETE="KYC_INCOMPLETE"; BANK_VERIFICATION_FAILED="BANK_VERIFICATION_FAILED"; SERVICE_INFORMATION_MISSING="SERVICE_INFORMATION_MISSING"; INFORMATION_CONFLICT="INFORMATION_CONFLICT"; READY_TO_CONTINUE="READY_TO_CONTINUE"; INVALID_CLAIM_TYPE="INVALID_CLAIM_TYPE"; CLAIM_RESOLVED="CLAIM_RESOLVED"
+    KYC_INCOMPLETE = "KYC_INCOMPLETE"
+    BANK_VERIFICATION_FAILED = "BANK_VERIFICATION_FAILED"
+    SERVICE_INFORMATION_MISSING = "SERVICE_INFORMATION_MISSING"
+    INFORMATION_CONFLICT = "INFORMATION_CONFLICT"
+    READY_TO_CONTINUE = "READY_TO_CONTINUE"
+    INVALID_CLAIM_TYPE = "INVALID_CLAIM_TYPE"
+    CLAIM_RESOLVED = "CLAIM_RESOLVED"
+
+    TRANSFER_SERVICE_MISSING = "TRANSFER_SERVICE_MISSING"
+    TRANSFER_INFORMATION_CONFLICT = "TRANSFER_INFORMATION_CONFLICT"
+    TRANSFER_READY = "TRANSFER_READY"
 class CaseData(BaseModel):
     scenario: str="kyc"; citizen_name: str="Priya (synthetic)"; claim_type: str=ClaimType.WITHDRAWAL.value; claim_status: ClaimStatus=ClaimStatus.REJECTED; kyc: Verification=Verification.INCOMPLETE; bank: Verification=Verification.COMPLETE; service: ServiceRecord=ServiceRecord.COMPLETE; consistency: Consistency=Consistency.CONSISTENT; rejection_reason: str="KYC verification needs attention"
 class RuleResult(BaseModel):
