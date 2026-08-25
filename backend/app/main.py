@@ -36,7 +36,7 @@ origins = [
     for item in __import__("os")
     .getenv(
         "NIVA_CORS_ORIGINS",
-        "http://localhost:5173",
+        "http://localhost:5173,http://127.0.0.1:5173",
     )
     .split(",")
     if item
@@ -535,4 +535,3 @@ def question(
         sources=sources,
         request_id=request.state.request_id,
     )
-

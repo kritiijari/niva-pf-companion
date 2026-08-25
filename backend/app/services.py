@@ -566,7 +566,7 @@ def local_extraction(text: str) -> ExtractionResult:
 
     return ExtractionResult(
         mentioned_issue=cleaned or None,
-        scenario_hint=infer_scenario(text),
+        scenario_hint=infer_issue(text) or infer_scenario(text),
         mode="demo_mock",
     )
 

@@ -30,19 +30,22 @@ type Source = {
 type Analysis = {
   title: string;
   what_happened: string;
-  what_to_do: string;
+  what_to_do: string[];
   why: string;
   source?: Source | null;
   timeline: TimelineStep[];
 };
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 const local: Record<string, Omit<Analysis, 'timeline'>> = {
   kyc: {
     title: 'KYC verification needs attention',
     what_happened:
       'Your claim cannot move forward because required verification information is incomplete.',
-    what_to_do:
+    what_to_do: [
       'Review your KYC information, complete any missing verification, then return to continue your claim.',
+    ],
     why: "NIVA's deterministic workflow check found that KYC verification is incomplete.",
     source: {
       title: 'EPFO Member e-Sewa',
@@ -57,8 +60,9 @@ const local: Record<string, Omit<Analysis, 'timeline'>> = {
     title: 'Bank verification needs attention',
     what_happened:
       'Your claim is paused because the bank verification did not complete.',
-    what_to_do:
+    what_to_do: [
       'Review the bank details and verification status, correct what is needed, then continue your claim.',
+    ],
     why: "NIVA's deterministic workflow check found a bank verification issue.",
     source: {
       title: 'EPFO Member e-Sewa',
@@ -73,8 +77,9 @@ const local: Record<string, Omit<Analysis, 'timeline'>> = {
     title: 'Service information is missing',
     what_happened:
       'Your employment service information is incomplete, so the claim cannot be checked yet.',
-    what_to_do:
+    what_to_do: [
       'Ask your previous employer to review the missing service information, then return to your claim.',
+    ],
     why: "NIVA's deterministic workflow check found missing service information.",
     source: null,
   },
@@ -83,8 +88,9 @@ const local: Record<string, Omit<Analysis, 'timeline'>> = {
     title: 'Some information does not match',
     what_happened:
       'Your claim details and service record contain conflicting information.',
-    what_to_do:
+    what_to_do: [
       'Review the conflicting information with your employer and correct it before continuing.',
+    ],
     why: "NIVA's deterministic workflow check found conflicting information.",
     source: null,
   },
@@ -93,8 +99,7 @@ const local: Record<string, Omit<Analysis, 'timeline'>> = {
     title: "You're ready to continue",
     what_happened:
       'We did not find a blocking issue in this synthetic case.',
-    what_to_do:
-      'Continue to submit your claim and track its processing.',
+    what_to_do: ['Continue to submit your claim and track its processing.'],
     why: "NIVA's deterministic workflow check found no blocking issue.",
     source: null,
   },
@@ -146,6 +151,16 @@ const defaultTimeline = (key: string): TimelineStep[] => {
 function infer(text: string) {
   const t = text.toLowerCase();
 
+  if (t.includes('transfer') || t.includes('previous employer') || t.includes('old employer')) {
+    if (t.includes('mismatch') || t.includes('conflict') || t.includes('does not match')) {
+      return 'transfer_conflict';
+    }
+    if (t.includes('ready') || t.includes('complete')) {
+      return 'transfer_ready';
+    }
+    return 'transfer_service';
+  }
+
   if (t.includes('bank')) {
     return 'bank';
   }
@@ -165,12 +180,27 @@ function infer(text: string) {
   return 'kyc';
 }
 
+function titleFor(reasonCode?: string) {
+  const titles: Record<string, string> = {
+    KYC_INCOMPLETE: 'KYC verification needs attention',
+    BANK_VERIFICATION_FAILED: 'Bank verification needs attention',
+    SERVICE_INFORMATION_MISSING: 'Service information is missing',
+    INFORMATION_CONFLICT: 'Information does not match',
+    READY_TO_CONTINUE: 'Claim appears ready',
+    TRANSFER_SERVICE_MISSING: 'Transfer service information is unavailable',
+    TRANSFER_INFORMATION_CONFLICT: 'Transfer details do not match',
+    TRANSFER_READY: 'Transfer appears ready',
+  };
+
+  return titles[reasonCode || ''] || 'PF request needs attention';
+}
+
 function App() {
   const [screen, setScreen] = useState<
     'landing' | 'describe' | 'processing' | 'result'
   >('landing');
 
-  const [issue, setIssue] = useState('kyc');
+  const [issue, setIssue] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -186,13 +216,14 @@ function App() {
     const scenario = issue || infer(description);
 
     try {
-      const created = await fetch('http://localhost:8000/cases', {
+      const created = await fetch(`${API_BASE_URL}/cases`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           scenario,
+          claim_type: scenario.startsWith('transfer') ? 'transfer' : 'withdrawal',
           language: locale.toLowerCase(),
         }),
       });
@@ -208,7 +239,7 @@ function App() {
         form.append('file', file);
 
         const upload = await fetch(
-          `http://localhost:8000/cases/${case_id}/documents`,
+          `${API_BASE_URL}/cases/${case_id}/documents`,
           {
             method: 'POST',
             body: form,
@@ -221,7 +252,7 @@ function App() {
       }
 
       const res = await fetch(
-        `http://localhost:8000/cases/${case_id}/analyze`,
+        `${API_BASE_URL}/cases/${case_id}/analyze`,
         {
           method: 'POST',
           headers: {
@@ -262,6 +293,7 @@ function App() {
 
       setAnalysis({
         ...explanation,
+        title: explanation.title ?? titleFor(body.result?.reason_code),
         source,
         timeline: body.timeline ?? [],
       });
@@ -283,6 +315,24 @@ function App() {
 
   const back = () => {
     setScreen(screen === 'describe' ? 'landing' : 'describe');
+  };
+
+  const startOver = () => {
+    setIssue('');
+    setDescription('');
+    setFile(null);
+    setError('');
+    setAnalysis(null);
+    setScreen('describe');
+  };
+
+  const tryAnotherDemo = () => {
+    setIssue('');
+    setDescription('');
+    setFile(null);
+    setError('');
+    setAnalysis(null);
+    setScreen('landing');
   };
 
   return (
@@ -403,6 +453,9 @@ function App() {
               ['service', 'Missing service info'],
               ['conflict', 'Information conflict'],
               ['ready', 'No blocking issue'],
+              ['transfer_service', 'Transfer: missing service info'],
+              ['transfer_conflict', 'Transfer: information mismatch'],
+              ['transfer_ready', 'Transfer: ready to proceed'],
             ].map(([key, label]) => (
               <button
                 key={key}
@@ -431,7 +484,7 @@ function App() {
             <input
               id="file"
               type="file"
-              accept=".pdf,image/*"
+              accept="application/pdf,.pdf"
               onChange={(e) => {
                 setFile(e.target.files?.[0] || null);
               }}
@@ -446,7 +499,7 @@ function App() {
                 <small>
                   {file
                     ? 'Ready to analyse'
-                    : 'PDF or image · synthetic data only'}
+                    : 'Text-based PDF · synthetic data only'}
                 </small>
               </span>
             </label>
@@ -499,7 +552,7 @@ function App() {
 
       {screen === 'result' && analysis && (
         <section className="result">
-          <button className="back" onClick={back}>
+          <button className="back" onClick={startOver}>
             <ChevronLeft size={18} />
             Start over
           </button>
@@ -526,7 +579,9 @@ function App() {
 
           <article className="action">
             <p className="article-label">WHAT DO I DO?</p>
-            <p>{analysis.what_to_do}</p>
+            <ol>
+              {analysis.what_to_do.map((action) => <li key={action}>{action}</li>)}
+            </ol>
 
             <button className="action-button">
               I understand my next step
@@ -605,7 +660,7 @@ function App() {
 
           <button
             className="outline"
-            onClick={() => setScreen('landing')}
+            onClick={tryAnotherDemo}
           >
             <RotateCcw size={17} />
             Try another demo

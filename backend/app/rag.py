@@ -36,6 +36,20 @@ def embedding(text: str):
     ]
 
 
+def _searchable_text(record: dict) -> str:
+    """Return the reviewed metadata and content used for local ranking."""
+
+    return " ".join(
+        [
+            record["document_id"],
+            record["title"],
+            record["section"],
+            record.get("reason_codes", ""),
+            record["excerpt"],
+        ]
+    )
+
+
 def _parse(path: Path):
     """
     Parse a reviewed knowledge markdown file.
@@ -52,11 +66,13 @@ def _parse(path: Path):
     Content...
     """
 
-    raw = path.read_text(encoding="utf-8").strip()
+    # Knowledge documents may be saved by Windows editors with a UTF-8 BOM.
+    # ``utf-8-sig`` removes it without changing the body or metadata.
+    raw = path.read_text(encoding="utf-8-sig").strip()
 
     # Split using the metadata delimiters.
     parts = re.split(
-        r"^---\s*$",
+        r"^---[ \t]*\r?$",
         raw,
         maxsplit=2,
         flags=re.MULTILINE,
@@ -120,15 +136,7 @@ def build_index():
     for path in DOCUMENTS.glob("*.md"):
         record = _parse(path)
 
-        searchable_text = (
-            record["document_id"]
-            + " "
-            + record["title"]
-            + " "
-            + record["section"]
-            + " "
-            + record["excerpt"]
-        )
+        searchable_text = _searchable_text(record)
 
         record["embedding"] = embedding(searchable_text)
 
@@ -201,15 +209,7 @@ def retrieve(
     ranked = []
 
     for record in records:
-        searchable_text = (
-            record["document_id"]
-            + " "
-            + record["title"]
-            + " "
-            + record["section"]
-            + " "
-            + record["excerpt"]
-        )
+        searchable_text = _searchable_text(record)
 
         record_terms = set(
             re.findall(
@@ -229,6 +229,17 @@ def retrieve(
                 record["embedding"],
             )
         )
+
+        # Reason-code metadata is curated alongside each reviewed document.
+        # An exact deterministic rule result should outrank incidental
+        # vocabulary overlap in the prose excerpt.
+        reason_codes = {
+            code.strip().lower()
+            for code in record.get("reason_codes", "").split(",")
+            if code.strip()
+        }
+        if any(code in query.lower() for code in reason_codes):
+            score += 1.0
 
         if score > 0.02:
             ranked.append(
