@@ -41,6 +41,7 @@ type Analysis = {
 };
 
 type ClaimType = 'withdrawal' | 'transfer';
+type Journey = 'general' | ClaimType;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
@@ -222,6 +223,7 @@ function App() {
   >('landing');
 
   const [claimType, setClaimType] = useState<ClaimType>('withdrawal');
+  const [journey, setJourney] = useState<Journey>('general');
   const [issue, setIssue] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -229,9 +231,13 @@ function App() {
   const [error, setError] = useState('');
   const [locale, setLocale] = useState('EN');
 
-  const begin = (nextClaimType: ClaimType = 'withdrawal') => {
+  const begin = (nextJourney: Journey) => {
+    const isGeneral = nextJourney === 'general';
+    const nextClaimType = isGeneral ? 'withdrawal' : nextJourney;
+
+    setJourney(nextJourney);
     setClaimType(nextClaimType);
-    setIssue(nextClaimType === 'transfer' ? 'transfer_service' : 'kyc');
+    setIssue(isGeneral ? '' : nextClaimType === 'transfer' ? 'transfer_service' : 'kyc');
     setDescription('');
     setFile(null);
     setError('');
@@ -348,8 +354,7 @@ function App() {
   };
 
   const startOver = () => {
-    setClaimType('withdrawal');
-    setIssue('');
+    setIssue(journey === 'general' ? '' : claimType === 'transfer' ? 'transfer_service' : 'kyc');
     setDescription('');
     setFile(null);
     setError('');
@@ -358,6 +363,7 @@ function App() {
   };
 
   const tryAnotherDemo = () => {
+    setJourney('general');
     setClaimType('withdrawal');
     setIssue('');
     setDescription('');
@@ -423,6 +429,15 @@ function App() {
           </div>
 
           <div className="journey-choices">
+            <button className="niva-card" onClick={() => begin('general')}>
+              <span className="journey-icon"><Sparkles size={22} /></span>
+              <span className="journey-kicker">NIVA ANALYSIS</span>
+              <b>Tell NIVA what happened</b>
+              <small>Describe your PF issue in your own words. NIVA will identify what may be blocking your journey and show the next practical step.</small>
+              <span className="journey-cta">Start with my issue <ArrowRight size={17} /></span>
+            </button>
+
+            <div className="guided-choices">
             <button className="journey-card withdrawal" onClick={() => begin('withdrawal')}>
               <span className="journey-icon"><WalletCards size={22} /></span>
               <span className="journey-kicker">PF WITHDRAWAL</span>
@@ -438,6 +453,7 @@ function App() {
               <small>Check previous-employment details and move your PF account with confidence.</small>
               <span className="journey-cta">Explore transfer <ArrowRight size={17} /></span>
             </button>
+            </div>
           </div>
 
           <p className="trust">
@@ -456,22 +472,29 @@ function App() {
 
           <p className="step">STEP 1 OF 2</p>
 
-          <div className={`workflow-badge ${claimType}`}>
-            {claimType === 'withdrawal' ? <WalletCards size={18} /> : <Landmark size={18} />}
-            <span>Exploring a PF {claimType} request</span>
-          </div>
+          {journey === 'general' ? (
+            <div className="workflow-badge general">
+              <Sparkles size={18} />
+              <span>NIVA will identify the relevant PF workflow</span>
+            </div>
+          ) : (
+            <div className={`workflow-badge ${claimType}`}>
+              {claimType === 'withdrawal' ? <WalletCards size={18} /> : <Landmark size={18} />}
+              <span>Exploring a PF {claimType} request</span>
+            </div>
+          )}
 
           <h1>
-            What needs
-            <br />
-            attention?
+            {journey === 'general' ? <>Tell NIVA what<br />happened.</> : <>What needs<br />attention?</>}
           </h1>
 
           <p className="sub">
-            Select a demo situation below, then add any context in your own words.
+            {journey === 'general'
+              ? 'Describe your issue in plain language. NIVA will use the existing deterministic analysis to find the relevant next step.'
+              : 'Select a demo situation below, then add any context in your own words.'}
           </p>
 
-          <div className="issues">
+          {journey !== 'general' && <div className="issues">
             {issuesByClaimType[claimType].map(([key, label]) => (
               <button
                 key={key}
@@ -482,17 +505,17 @@ function App() {
                 {label}
               </button>
             ))}
-          </div>
+          </div>}
 
           <label htmlFor="description">
-            What happened? <em>Optional — helps NIVA explain it clearly</em>
+            What happened? <em>{journey === 'general' ? 'Describe the issue in your own words' : 'Optional — helps NIVA explain it clearly'}</em>
           </label>
 
           <textarea
             id="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder={claimType === 'transfer' ? 'Example: My previous employer service details are missing for my PF transfer.' : 'Example: My withdrawal claim was rejected because KYC is incomplete.'}
+            placeholder={journey === 'general' ? 'Example: My PF claim was rejected because my bank details could not be verified.' : claimType === 'transfer' ? 'Example: My previous employer service details are missing for my PF transfer.' : 'Example: My withdrawal claim was rejected because KYC is incomplete.'}
             maxLength={3000}
           />
 
@@ -531,7 +554,7 @@ function App() {
           </div>
 
           <button className="primary continue" onClick={analyze}>
-            Analyse my {claimType} request
+            {journey === 'general' ? 'Let NIVA analyse this' : `Analyse my ${claimType} request`}
             <Send size={17} />
           </button>
 
@@ -575,7 +598,7 @@ function App() {
 
           {error && <p className="demo-error">{error}</p>}
 
-          <p className="eyebrow">ANALYSIS COMPLETE · {claimType.toUpperCase()} REQUEST</p>
+          <p className="eyebrow">ANALYSIS COMPLETE{journey === 'general' ? '' : ` · ${claimType.toUpperCase()} REQUEST`}</p>
 
           <div className="result-head">
             <div className="success-mark">
