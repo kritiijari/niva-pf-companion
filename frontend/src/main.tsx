@@ -7,6 +7,9 @@ import {
   FileText,
   Globe2,
   Landmark,
+  Send,
+  Sparkles,
+  WalletCards,
   RotateCcw,
   ShieldCheck,
   Upload,
@@ -34,9 +37,27 @@ type Analysis = {
   why: string;
   source?: Source | null;
   timeline: TimelineStep[];
+  reasonCode?: string;
 };
 
+type ClaimType = 'withdrawal' | 'transfer';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+const issuesByClaimType: Record<ClaimType, [string, string][]> = {
+  withdrawal: [
+    ['kyc', 'KYC verification'],
+    ['bank', 'Bank verification'],
+    ['service', 'Missing service info'],
+    ['conflict', 'Information conflict'],
+    ['ready', 'No blocking issue'],
+  ],
+  transfer: [
+    ['transfer_service', 'Missing previous-employment info'],
+    ['transfer_conflict', 'Transfer information mismatch'],
+    ['transfer_ready', 'Transfer ready to proceed'],
+  ],
+};
 
 const local: Record<string, Omit<Analysis, 'timeline'>> = {
   kyc: {
@@ -200,6 +221,7 @@ function App() {
     'landing' | 'describe' | 'processing' | 'result'
   >('landing');
 
+  const [claimType, setClaimType] = useState<ClaimType>('withdrawal');
   const [issue, setIssue] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -207,7 +229,14 @@ function App() {
   const [error, setError] = useState('');
   const [locale, setLocale] = useState('EN');
 
-  const begin = () => setScreen('describe');
+  const begin = (nextClaimType: ClaimType = 'withdrawal') => {
+    setClaimType(nextClaimType);
+    setIssue(nextClaimType === 'transfer' ? 'transfer_service' : 'kyc');
+    setDescription('');
+    setFile(null);
+    setError('');
+    setScreen('describe');
+  };
 
   async function analyze() {
     setError('');
@@ -223,7 +252,7 @@ function App() {
         },
         body: JSON.stringify({
           scenario,
-          claim_type: scenario.startsWith('transfer') ? 'transfer' : 'withdrawal',
+          claim_type: claimType,
           language: locale.toLowerCase(),
         }),
       });
@@ -296,6 +325,7 @@ function App() {
         title: explanation.title ?? titleFor(body.result?.reason_code),
         source,
         timeline: body.timeline ?? [],
+        reasonCode: body.result?.reason_code,
       });
     } catch {
       const chosen = local[scenario] || local.kyc;
@@ -318,6 +348,7 @@ function App() {
   };
 
   const startOver = () => {
+    setClaimType('withdrawal');
     setIssue('');
     setDescription('');
     setFile(null);
@@ -327,6 +358,7 @@ function App() {
   };
 
   const tryAnotherDemo = () => {
+    setClaimType('withdrawal');
     setIssue('');
     setDescription('');
     setFile(null);
@@ -376,48 +408,36 @@ function App() {
 
       {screen === 'landing' && (
         <section className="landing">
-          <p className="eyebrow">YOUR PF JOURNEY, EXPLAINED.</p>
+          <div className="landing-copy">
+            <p className="eyebrow"><Sparkles size={14} /> YOUR PF JOURNEY, EXPLAINED</p>
 
           <h1>
-            Understand.
+            PF clarity,
             <br />
-            <i>Fix.</i> Continue.
+            when you <i>need it.</i>
           </h1>
 
           <p className="lead">
-            Clear, calm guidance when your PF claim gets stuck.
+            Tell NIVA what happened. We identify the workflow, explain the issue in plain language, and show the next practical step.
           </p>
+          </div>
 
-          <div className="choice-card">
-            <h2>What do you need help with?</h2>
-
-            <button className="primary choice" onClick={begin}>
-              <span>
-                <Landmark size={21} />
-              </span>
-
-              <div>
-                <b>My PF claim has a problem</b>
-
-                <small>
-                  Understand what happened and what to do next
-                </small>
-              </div>
-
-              <ArrowRight size={20} />
+          <div className="journey-choices">
+            <button className="journey-card withdrawal" onClick={() => begin('withdrawal')}>
+              <span className="journey-icon"><WalletCards size={22} /></span>
+              <span className="journey-kicker">PF WITHDRAWAL</span>
+              <b>I want to withdraw my PF</b>
+              <small>Understand a blocked claim, verification issue, or the next step to submit.</small>
+              <span className="journey-cta">Explore withdrawal <ArrowRight size={17} /></span>
             </button>
 
-            <div className="secondary-options">
-              <button disabled>
-                I want to withdraw my PF
-                <small>Coming soon</small>
-              </button>
-
-              <button disabled>
-                I want to transfer my PF
-                <small>Coming soon</small>
-              </button>
-            </div>
+            <button className="journey-card transfer" onClick={() => begin('transfer')}>
+              <span className="journey-icon"><Landmark size={22} /></span>
+              <span className="journey-kicker">PF TRANSFER</span>
+              <b>I want to transfer my PF</b>
+              <small>Check previous-employment details and move your PF account with confidence.</small>
+              <span className="journey-cta">Explore transfer <ArrowRight size={17} /></span>
+            </button>
           </div>
 
           <p className="trust">
@@ -436,27 +456,23 @@ function App() {
 
           <p className="step">STEP 1 OF 2</p>
 
+          <div className={`workflow-badge ${claimType}`}>
+            {claimType === 'withdrawal' ? <WalletCards size={18} /> : <Landmark size={18} />}
+            <span>Exploring a PF {claimType} request</span>
+          </div>
+
           <h1>
-            Tell us what
+            What needs
             <br />
-            you're seeing.
+            attention?
           </h1>
 
           <p className="sub">
-            Choose the closest issue, or describe it in your own words.
+            Select a demo situation below, then add any context in your own words.
           </p>
 
           <div className="issues">
-            {[
-              ['kyc', 'KYC verification'],
-              ['bank', 'Bank verification'],
-              ['service', 'Missing service info'],
-              ['conflict', 'Information conflict'],
-              ['ready', 'No blocking issue'],
-              ['transfer_service', 'Transfer: missing service info'],
-              ['transfer_conflict', 'Transfer: information mismatch'],
-              ['transfer_ready', 'Transfer: ready to proceed'],
-            ].map(([key, label]) => (
+            {issuesByClaimType[claimType].map(([key, label]) => (
               <button
                 key={key}
                 className={issue === key ? 'selected' : ''}
@@ -469,14 +485,14 @@ function App() {
           </div>
 
           <label htmlFor="description">
-            What happened? <em>Optional</em>
+            What happened? <em>Optional — helps NIVA explain it clearly</em>
           </label>
 
           <textarea
             id="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Example: My claim was rejected and I don't understand why."
+            placeholder={claimType === 'transfer' ? 'Example: My previous employer service details are missing for my PF transfer.' : 'Example: My withdrawal claim was rejected because KYC is incomplete.'}
             maxLength={3000}
           />
 
@@ -515,8 +531,8 @@ function App() {
           </div>
 
           <button className="primary continue" onClick={analyze}>
-            Understand my claim
-            <ArrowRight size={19} />
+            Analyse my {claimType} request
+            <Send size={17} />
           </button>
 
           <p className="privacy">
@@ -559,7 +575,7 @@ function App() {
 
           {error && <p className="demo-error">{error}</p>}
 
-          <p className="eyebrow">ANALYSIS COMPLETE</p>
+          <p className="eyebrow">ANALYSIS COMPLETE · {claimType.toUpperCase()} REQUEST</p>
 
           <div className="result-head">
             <div className="success-mark">
@@ -567,7 +583,7 @@ function App() {
             </div>
 
             <div>
-              <span>WE FOUND THE PROBLEM</span>
+              <span>{analysis.reasonCode?.includes('READY') ? 'YOUR REQUEST IS CLEAR TO CONTINUE' : 'WHAT NIVA FOUND'}</span>
               <h1>{analysis.title}</h1>
             </div>
           </div>
