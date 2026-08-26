@@ -676,6 +676,7 @@ def local_explanation(
         why += " The listed official guidance is relevant to this next step."
 
     return Explanation(
+        title=title,
         what_happened=happened,
         what_to_do=[
             first,

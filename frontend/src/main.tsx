@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowRight,
@@ -38,6 +38,14 @@ type Analysis = {
   source?: Source | null;
   timeline: TimelineStep[];
   reasonCode?: string;
+};
+
+type Extraction = {
+  mentioned_issue?: string | null;
+  scenario_hint?: string | null;
+  rejection_reason?: string | null;
+  claim_type?: string | null;
+  mode?: string;
 };
 
 type ClaimType = 'withdrawal' | 'transfer';
@@ -284,6 +292,66 @@ function resolutionPlan(analysis: Analysis): ResolutionPlan {
   };
 }
 
+function pipelineStages(hasDocument: boolean, hasGuidance: boolean, inFlight = false) {
+  const stages = [
+    ...(hasDocument ? [{ key: 'document', label: 'Document received' }] : []),
+    { key: 'analyzed', label: 'Information analyzed' },
+    { key: 'check', label: 'NIVA checks the case' },
+    { key: 'problem', label: 'Problem identified' },
+    ...(inFlight || hasGuidance
+      ? [{ key: 'guidance', label: inFlight ? 'Looking up official guidance' : 'Official guidance found' }]
+      : []),
+    { key: 'plan', label: 'Resolution plan' },
+  ];
+
+  return stages;
+}
+
+function extractedFacts(extraction: Extraction | null) {
+  if (!extraction) {
+    return [];
+  }
+
+  const facts: [string, string][] = [];
+
+  if (extraction.claim_type) {
+    facts.push(['Claim type', extraction.claim_type]);
+  }
+
+  if (extraction.rejection_reason) {
+    facts.push(['Issue mentioned', extraction.rejection_reason]);
+  }
+
+  if (extraction.mentioned_issue) {
+    const text = extraction.mentioned_issue;
+    facts.push([
+      'Information used',
+      text.length > 280 ? `${text.slice(0, 280)}…` : text,
+    ]);
+  }
+
+  if (extraction.scenario_hint) {
+    facts.push(['Issue identified', extraction.scenario_hint.replace(/_/g, ' ')]);
+  }
+
+  return facts;
+}
+
+async function readApiError(response: Response, fallback: string) {
+  try {
+    const body = await response.json();
+    const message = body?.error?.message;
+
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+  } catch {
+    // Keep the fallback when the API does not return JSON.
+  }
+
+  return fallback;
+}
+
 function App() {
   const [screen, setScreen] = useState<
     'landing' | 'describe' | 'processing' | 'result' | 'resolution'
@@ -295,8 +363,14 @@ function App() {
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [usedDocument, setUsedDocument] = useState(false);
   const [error, setError] = useState('');
   const [locale, setLocale] = useState('EN');
+
+  useEffect(() => {
+    document.documentElement.lang = locale.toLowerCase();
+  }, [locale]);
 
   const begin = (nextJourney: Journey) => {
     const isGeneral = nextJourney === 'general';
@@ -307,6 +381,8 @@ function App() {
     setIssue(isGeneral ? '' : nextClaimType === 'transfer' ? 'transfer_service' : 'kyc');
     setDescription('');
     setFile(null);
+    setExtraction(null);
+    setUsedDocument(false);
     setError('');
     setScreen('describe');
   };
@@ -316,6 +392,9 @@ function App() {
     setScreen('processing');
 
     const scenario = issue || infer(description);
+    const hadDocument = Boolean(file);
+    setUsedDocument(hadDocument);
+    setExtraction(null);
 
     try {
       const created = await fetch(`${API_BASE_URL}/cases`, {
@@ -331,10 +410,13 @@ function App() {
       });
 
       if (!created.ok) {
-        throw new Error('Failed to create case');
+        setError(await readApiError(created, 'Could not start this case. Please try again.'));
+        setScreen('describe');
+        return;
       }
 
       const { case_id } = await created.json();
+      let documentExtraction: Extraction | null = null;
 
       if (file) {
         const form = new FormData();
@@ -349,8 +431,12 @@ function App() {
         );
 
         if (!upload.ok) {
-          throw new Error('Failed to upload document');
+          setError(await readApiError(upload, 'Could not read this synthetic notice. Try another PDF or describe the issue instead.'));
+          setScreen('describe');
+          return;
         }
+
+        documentExtraction = await upload.json();
       }
 
       const res = await fetch(
@@ -367,7 +453,9 @@ function App() {
       );
 
       if (!res.ok) {
-        throw new Error('Failed to analyze case');
+        setError(await readApiError(res, 'Could not analyse this case. Please try again.'));
+        setScreen('describe');
+        return;
       }
 
       const body = await res.json();
@@ -393,9 +481,10 @@ function App() {
         body.source_references?.[0] ??
         null;
 
+      setExtraction(documentExtraction ?? body.extraction ?? null);
       setAnalysis({
         ...explanation,
-        title: explanation.title ?? titleFor(body.result?.reason_code),
+        title: explanation.title || titleFor(body.result?.reason_code),
         source,
         timeline: body.timeline ?? [],
         reasonCode: body.result?.reason_code,
@@ -409,7 +498,7 @@ function App() {
       });
 
       setError(
-        'Demo mode / Backend unavailable — this result is local synthetic preview only.'
+        'The analysis service is unavailable. This result is a local synthetic preview only. You can retry when the service is running.'
       );
     }
 
@@ -426,6 +515,8 @@ function App() {
     setFile(null);
     setError('');
     setAnalysis(null);
+    setExtraction(null);
+    setUsedDocument(false);
     setScreen('describe');
   };
 
@@ -437,6 +528,8 @@ function App() {
     setFile(null);
     setError('');
     setAnalysis(null);
+    setExtraction(null);
+    setUsedDocument(false);
     setScreen('landing');
   };
 
@@ -467,10 +560,10 @@ function App() {
             </select>
           </label>
 
-          <button className="demo">
+          <p className="demo" role="status">
             <span />
             Demo mode
-          </button>
+          </p>
         </div>
       </header>
 
@@ -482,17 +575,24 @@ function App() {
       {screen === 'landing' && (
         <section className="landing">
           <div className="landing-copy">
-            <p className="eyebrow"><Sparkles size={14} /> YOUR PF JOURNEY, EXPLAINED</p>
+            <p className="eyebrow"><Sparkles size={14} /> NIVA</p>
 
           <h1>
-            PF clarity,
+            Your PF journey,
             <br />
-            when you <i>need it.</i>
+            <i>explained.</i>
           </h1>
 
           <p className="lead">
-            Tell NIVA what happened. We identify the workflow, explain the issue in plain language, and show the next practical step.
+            Understand what went wrong, why it happened, and what to do next.
           </p>
+
+          <ol className="product-pipeline" aria-label="How NIVA works">
+            <li>Your issue</li>
+            <li>Workflow check</li>
+            <li>Official guidance</li>
+            <li>Resolution plan</li>
+          </ol>
           </div>
 
           <div className="journey-choices">
@@ -557,9 +657,15 @@ function App() {
 
           <p className="sub">
             {journey === 'general'
-              ? 'Describe your issue in plain language. NIVA will use the existing deterministic analysis to find the relevant next step.'
-              : 'Select a demo situation below, then add any context in your own words.'}
+              ? 'Describe the issue or add a synthetic notice. NIVA will analyse the information, run a workflow check, and show the next practical step.'
+              : 'Select a demo situation below, then add any context in your own words. You can also add a synthetic PDF notice.'}
           </p>
+
+          {error && (
+            <p className="demo-error" role="alert">
+              {error}
+            </p>
+          )}
 
           {journey !== 'general' && <div className="issues">
             {issuesByClaimType[claimType].map(([key, label]) => (
@@ -639,7 +745,7 @@ function App() {
           </div>
 
           <p className="eyebrow">
-            ANALYSING SYNTHETIC INFORMATION
+            {usedDocument ? 'ANALYSING SYNTHETIC DOCUMENT' : 'ANALYSING SYNTHETIC INFORMATION'}
           </p>
 
           <h1>
@@ -649,6 +755,12 @@ function App() {
           </h1>
 
           <p>We’re checking the information you provided.</p>
+
+          <ol className="process-stages">
+            {pipelineStages(usedDocument, true, true).map((stage) => (
+              <li key={stage.key}>{stage.label}</li>
+            ))}
+          </ol>
 
           <div className="processing-line">
             <span />
@@ -663,9 +775,23 @@ function App() {
             Start over
           </button>
 
-          {error && <p className="demo-error">{error}</p>}
+          {error && (
+            <div className="demo-error" role="alert">
+              <p>{error}</p>
+              <div className="error-actions">
+                <button type="button" onClick={() => setScreen('describe')}>Retry</button>
+                <button type="button" onClick={tryAnotherDemo}>Return home</button>
+              </div>
+            </div>
+          )}
 
           <p className="eyebrow">ANALYSIS COMPLETE{journey === 'general' ? '' : ` · ${claimType.toUpperCase()} REQUEST`}</p>
+
+          <ol className="result-pipeline" aria-label="NIVA analysis path">
+            {pipelineStages(usedDocument, Boolean(analysis.source)).map((stage) => (
+              <li key={stage.key}>{stage.label}</li>
+            ))}
+          </ol>
 
           <div className="result-head">
             <div className="success-mark">
@@ -683,6 +809,47 @@ function App() {
             <p>{analysis.what_happened}</p>
           </article>
 
+          {extractedFacts(extraction).length > 0 && (
+            <article className="extracted">
+              <p className="article-label">INFORMATION NIVA ANALYSED</p>
+              <dl>
+                {extractedFacts(extraction).map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
+          )}
+
+          <article className="explain">
+            <p className="article-label">WHY NIVA REACHED THIS RESULT</p>
+
+            <div className="explain-grid">
+              <div>
+                <span>NIVA decision</span>
+                <strong>{analysis.reasonCode || 'WORKFLOW CHECK'}</strong>
+              </div>
+              <div>
+                <span>What NIVA found</span>
+                <p>{analysis.why}</p>
+              </div>
+              <div>
+                <span>Supporting information</span>
+                <p>
+                  {analysis.source
+                    ? analysis.source.title
+                    : 'No matching source in the local knowledge base for this issue.'}
+                </p>
+              </div>
+            </div>
+
+            <p className="explain-path">
+              NIVA interprets the information → deterministic rules decide the outcome → official guidance supports the next step.
+            </p>
+          </article>
+
           <article className="action">
             <p className="article-label">WHAT DO I DO?</p>
             <ol>
@@ -696,15 +863,13 @@ function App() {
           </article>
 
           <article>
-            <p className="article-label">WHY?</p>
-
-            <p>{analysis.why}</p>
+            <p className="article-label">OFFICIAL GUIDANCE</p>
 
             {analysis.source ? (
               <div className="source-card">
                 <div className="source-card-header">
                   <div>
-                    <p className="source-label">OFFICIAL GUIDANCE</p>
+                    <p className="source-label">SUPPORTING GUIDANCE</p>
 
                     <h3>{analysis.source.title}</h3>
 
@@ -797,6 +962,11 @@ function App() {
             <article>
               <p className="article-label">WHAT TO DO NEXT</p>
               <p>{plan.summary}</p>
+              {(analysis.reasonCode === 'TRANSFER_READY' || analysis.reasonCode === 'READY_TO_CONTINUE') && (
+                <p className="resolution-authority">
+                  NIVA found no blocking issue in the available information. The latest status on the official EPFO portal remains authoritative.
+                </p>
+              )}
             </article>
 
             <article className="resolution-steps">
