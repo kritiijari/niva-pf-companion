@@ -43,6 +43,13 @@ type Analysis = {
 type ClaimType = 'withdrawal' | 'transfer';
 type Journey = 'general' | ClaimType;
 
+type ResolutionPlan = {
+  title: string;
+  summary: string;
+  steps: string[];
+  guidanceLabel: string;
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 const issuesByClaimType: Record<ClaimType, [string, string][]> = {
@@ -217,9 +224,69 @@ function titleFor(reasonCode?: string) {
   return titles[reasonCode || ''] || 'PF request needs attention';
 }
 
+function resolutionPlan(analysis: Analysis): ResolutionPlan {
+  const plans: Record<string, ResolutionPlan> = {
+    KYC_INCOMPLETE: {
+      title: 'Resolve your KYC issue',
+      summary: 'NIVA found that KYC verification is the current blocker.',
+      steps: ['Review which KYC information needs verification.', 'Complete or correct the required details through the appropriate EPFO process.', 'Return to NIVA and check the claim again.'],
+      guidanceLabel: 'View official EPFO guidance',
+    },
+    BANK_VERIFICATION_FAILED: {
+      title: 'Resolve bank verification',
+      summary: 'NIVA found that bank verification needs attention before the claim can continue.',
+      steps: ['Review the bank account details linked to the PF account.', 'Correct or update the details if required.', 'Verify the updated information before continuing with the claim.'],
+      guidanceLabel: 'View official EPFO guidance',
+    },
+    SERVICE_INFORMATION_MISSING: {
+      title: 'Resolve missing service information',
+      summary: 'NIVA found that employment or service information is incomplete.',
+      steps: ['Review employment and service details.', 'Identify the missing or incorrect information.', 'Complete the correction through the appropriate employer or EPFO process.', 'Return and analyze the claim again.'],
+      guidanceLabel: 'View official EPFO guidance',
+    },
+    INFORMATION_CONFLICT: {
+      title: 'Resolve the information mismatch',
+      summary: 'NIVA found information that does not match the available records.',
+      steps: ['Review the information that may not match.', 'Check personal, employment, and PF account details.', 'Correct the mismatch before continuing.', 'Return to NIVA and re-check the issue.'],
+      guidanceLabel: 'View official EPFO guidance',
+    },
+    TRANSFER_SERVICE_MISSING: {
+      title: 'Resolve missing transfer information',
+      summary: 'NIVA found missing details related to previous employment.',
+      steps: ['Review previous employment information.', 'Check the relevant previous and current PF account details.', 'Correct or complete missing information.', 'Re-check the transfer.'],
+      guidanceLabel: 'View official transfer guidance',
+    },
+    TRANSFER_INFORMATION_CONFLICT: {
+      title: 'Resolve the transfer information mismatch',
+      summary: 'NIVA found a difference between previous and current employment records.',
+      steps: ['Compare previous and current employment details.', 'Check PF account information for inconsistencies.', 'Correct the conflicting information before submitting the transfer again.'],
+      guidanceLabel: 'View official transfer guidance',
+    },
+    TRANSFER_READY: {
+      title: 'Your transfer appears ready to proceed',
+      summary: 'NIVA found no blocking issue in the available transfer information.',
+      steps: ['Review the transfer details once more.', 'Continue only with the latest status shown on the official EPFO portal.', 'Return to NIVA if a new issue appears.'],
+      guidanceLabel: 'View official transfer guidance',
+    },
+    READY_TO_CONTINUE: {
+      title: 'Your claim appears ready to continue',
+      summary: 'NIVA found no blocking issue in the available claim information.',
+      steps: ['Review the claim details once more.', 'Continue with the latest status shown on the official EPFO portal.', 'Return to NIVA if a new issue appears.'],
+      guidanceLabel: 'View official EPFO guidance',
+    },
+  };
+
+  return plans[analysis.reasonCode ?? ''] ?? {
+    title: analysis.title,
+    summary: analysis.what_happened,
+    steps: analysis.what_to_do,
+    guidanceLabel: 'View official guidance',
+  };
+}
+
 function App() {
   const [screen, setScreen] = useState<
-    'landing' | 'describe' | 'processing' | 'result'
+    'landing' | 'describe' | 'processing' | 'result' | 'resolution'
   >('landing');
 
   const [claimType, setClaimType] = useState<ClaimType>('withdrawal');
@@ -622,7 +689,7 @@ function App() {
               {analysis.what_to_do.map((action) => <li key={action}>{action}</li>)}
             </ol>
 
-            <button className="action-button">
+            <button className="action-button" onClick={() => setScreen('resolution')}>
               I understand my next step
               <ArrowRight size={18} />
             </button>
@@ -706,6 +773,55 @@ function App() {
           </button>
         </section>
       )}
+
+      {screen === 'resolution' && analysis && (() => {
+        const plan = resolutionPlan(analysis);
+
+        return (
+          <section className="resolution">
+            <button className="back" onClick={() => setScreen('result')}>
+              <ChevronLeft size={18} />
+              Back to analysis
+            </button>
+
+            <p className="eyebrow">YOUR RESOLUTION PLAN</p>
+
+            <div className="resolution-head">
+              <div className="success-mark"><Check size={24} /></div>
+              <div>
+                <span>NIVA RECOMMENDS</span>
+                <h1>{plan.title}</h1>
+              </div>
+            </div>
+
+            <article>
+              <p className="article-label">WHAT TO DO NEXT</p>
+              <p>{plan.summary}</p>
+            </article>
+
+            <article className="resolution-steps">
+              <p className="article-label">YOUR ACTION PLAN</p>
+              <ol>
+                {plan.steps.map((step) => <li key={step}>{step}</li>)}
+              </ol>
+            </article>
+
+            {analysis.source ? (
+              <a className="primary resolution-guidance" href={analysis.source.url} target="_blank" rel="noreferrer">
+                {plan.guidanceLabel}
+                <ArrowRight size={18} />
+              </a>
+            ) : (
+              <p className="resolution-note">Official guidance remains available on the analysis screen when a relevant source is retrieved.</p>
+            )}
+
+            <button className="outline" onClick={tryAnotherDemo}>
+              <RotateCcw size={17} />
+              Analyze another issue
+            </button>
+          </section>
+        );
+      })()}
     </main>
   );
 }
