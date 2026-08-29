@@ -30,4 +30,5 @@ class ExtractionResult(BaseModel):
     claim_type: str|None=None; claim_status: str|None=None; rejection_reason: str|None=None; mentioned_documents: list[str]=Field(default_factory=list); mentioned_issue: str|None=None; dates: list[str]=Field(default_factory=list); important_fields: dict[str,str]=Field(default_factory=dict); scenario_hint: str|None=None; mode: str="demo_mock"
 class SourceReference(BaseModel): document_id: str; title: str; url: str; section: str; excerpt: str
 class Explanation(BaseModel):
+    title: str = ""
     what_happened: str; what_to_do: list[str]; why: str; source_references: list[SourceReference]=Field(default_factory=list); language: Language; mode: str

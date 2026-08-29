@@ -13,4 +13,4 @@ def test_every_reason_code_has_a_nonempty_explanation_in_all_languages():
         for reason_code, case in scenarios.items():
             explanation = local_explanation(evaluate(case), [], language)
             assert reason_code in COPY
-            assert explanation.what_happened and explanation.what_to_do and explanation.why
+            assert explanation.what_happened and explanation.what_to_do and explanation.why and explanation.title
