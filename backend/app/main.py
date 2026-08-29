@@ -1,4 +1,3 @@
-
 import logging
 import uuid
 
@@ -535,3 +534,16 @@ def question(
         sources=sources,
         request_id=request.state.request_id,
     )
+
+
+# ============================================================
+# SERVE FRONTEND (SPA)
+# ============================================================
+
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+if frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
